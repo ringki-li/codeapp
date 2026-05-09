@@ -5,57 +5,33 @@ on:
 
 jobs:
   build:
-    name: Build and Package iOS App
+    name: Build Unsigned IPA
     runs-on: macos-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           submodules: recursive
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: |
-          if [ -f "package.json" ]; then
-            npm install
-          fi
-          if [ -f "Podfile" ]; then
-            sudo gem install cocoapods
-            pod install
-          fi
 
       - name: Build and Archive
         run: |
-          # 自动检测是 workspace 还是 xcodeproj
-          if ls *.xcworkspace 1> /dev/null 2>&1; then
-            TARGET="-workspace $(ls *.xcworkspace | head -n 1)"
-          elif ls *.xcodeproj 1> /dev/null 2>&1; then
-            TARGET="-project $(ls *.xcodeproj | head -n 1)"
+          # 根据官方参考代码，项目名和 Scheme 确定为 Code
+          # 自动判断使用 workspace 还是 xcodeproj
+          if [ -d "Code.xcworkspace" ]; then
+            TARGET="-workspace Code.xcworkspace"
           else
-            echo "错误：找不到 .xcworkspace 或 .xcodeproj 文件！"
-            ls -la
-            exit 1
+            TARGET="-project Code.xcodeproj"
           fi
           
-          # 自动解析获取项目的 Scheme
-          SCHEME=$(xcodebuild -list -json | jq -r '.project.schemes[0] // .workspace.schemes[0]')
-          if [ "$SCHEME" == "null" ] || [ -z "$SCHEME" ]; then
-            SCHEME="CodeApp" # 兜底默认值
-          fi
-          
-          echo "=> 探测到构建目标: $TARGET"
-          echo "=> 探测到 Scheme: $SCHEME"
+          echo "=> 正在使用目标: $TARGET, Scheme: Code 进行无签名编译..."
 
           xcodebuild archive \
             $TARGET \
-            -scheme "$SCHEME" \
+            -scheme Code \
             -configuration Release \
-            -archivePath $PWD/build/CodeApp.xcarchive \
+            -archivePath $PWD/build/Code.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -64,12 +40,13 @@ jobs:
       - name: Package to IPA
         run: |
           mkdir -p Payload
-          cp -r build/CodeApp.xcarchive/Products/Applications/*.app Payload/
-          zip -r CodeApp.ipa Payload
+          # 将编译出的 .app 提取并压缩为标准 .ipa 格式
+          cp -r build/Code.xcarchive/Products/Applications/*.app Payload/
+          zip -r Code.ipa Payload
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: CodeApp-Unsigned-IPA
-          path: CodeApp.ipa
+          path: Code.ipa
           retention-days: 3
