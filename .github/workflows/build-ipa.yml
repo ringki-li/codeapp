@@ -17,7 +17,6 @@ jobs:
 
       - name: Build and Archive
         run: |
-          # 根据官方参考代码，项目名和 Scheme 确定为 Code
           # 自动判断使用 workspace 还是 xcodeproj
           if [ -d "Code.xcworkspace" ]; then
             TARGET="-workspace Code.xcworkspace"
@@ -25,13 +24,17 @@ jobs:
             TARGET="-project Code.xcodeproj"
           fi
           
-          echo "=> 正在使用目标: $TARGET, Scheme: Code 进行无签名编译..."
+          # 核心修复：让 Xcode 自己列出并提取真实的 Scheme 名字
+          SCHEME=$(xcodebuild -list -json | jq -r '.project.schemes[0] // .workspace.schemes[0]')
+          
+          echo "=> 正在使用目标: $TARGET"
+          echo "=> 自动探测到真实的 Scheme 为: $SCHEME"
 
           xcodebuild archive \
             $TARGET \
-            -scheme Code \
+            -scheme "$SCHEME" \
             -configuration Release \
-            -archivePath $PWD/build/Code.xcarchive \
+            -archivePath $PWD/build/CodeApp.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -41,12 +44,12 @@ jobs:
         run: |
           mkdir -p Payload
           # 将编译出的 .app 提取并压缩为标准 .ipa 格式
-          cp -r build/Code.xcarchive/Products/Applications/*.app Payload/
-          zip -r Code.ipa Payload
+          cp -r build/CodeApp.xcarchive/Products/Applications/*.app Payload/
+          zip -r CodeApp.ipa Payload
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: CodeApp-Unsigned-IPA
-          path: Code.ipa
+          path: CodeApp.ipa
           retention-days: 3
